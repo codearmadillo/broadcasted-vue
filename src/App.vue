@@ -11,7 +11,5 @@ const visible = ref(true);
   </button>
   <template v-if="visible">
     <BroadcastUser />
-    <BroadcastUser />
-    <BroadcastUser />
   </template>
 </template>

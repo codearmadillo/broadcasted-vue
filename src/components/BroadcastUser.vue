@@ -2,15 +2,26 @@
 import { computed } from 'vue';
 import { broadcasted } from '../composables/broadcasted';
 
-const count = broadcasted('HelloWorld', 0);
-const double = computed(() => count.value * 2);
+const { ref: count, channel } = broadcasted('HelloWorld', 0);
+const { ref: count1, channel: channel1 } = broadcasted('HelloWorld1', 0);
+const { ref: count2, channel: channel2 } = broadcasted('HelloWorld2', 0);
 </script>
 
 <template>
   <div class="radio">
     <div class="value">{{ count }}</div>
-    <div>* 2 = {{ double }}</div>
     <button class="button" @click="count += 1">+1</button>
+    <button class="button close-channel" @click="channel.close()">Close</button>
+  </div>
+  <div class="radio">
+    <div class="value">{{ count1 }}</div>
+    <button class="button" @click="count1 += 2">+2</button>
+    <button class="button close-channel" @click="channel.close()">Close</button>
+  </div>
+  <div class="radio">
+    <div class="value">{{ count2 }}</div>
+    <button class="button" @click="count2 += 4">+4</button>
+    <button class="button close-channel" @click="cchannel.close()">Close</button>
   </div>
 </template>
 
@@ -30,5 +41,9 @@ const double = computed(() => count.value * 2);
 }
 .button {
   background: #ff99ff;
+}
+.button.close-channel {
+  background: red;
+  color: white;
 }
 </style>

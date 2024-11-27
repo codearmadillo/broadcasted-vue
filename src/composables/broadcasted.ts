@@ -1,10 +1,14 @@
 import { onMounted, onUnmounted, ref, customRef } from 'vue';
 
-type Event = {
+type Event = | {
   event: 'HelloWorld';
-  data: {
-    message: string;
-  };
+  data: number
+} | {
+  event: 'HelloWorld1';
+  data: number
+} | {
+  event: 'HelloWorld2';
+  data: number
 };
 
 type Options = {
@@ -42,13 +46,15 @@ export const broadcasted = <
     value = e.data as TValue;
     triggerReactiveValueChangeCallback();
   }
-
   function onBroadcastChannelError(e: MessageEvent) {
     console.error(
       `Error receiving event ${event} - ${e?.data}. This usually means that the event was not sent correctly and message cannot be serialised`
     );
   }
 
+  /**
+   * Component lifecycle callbacks
+   */
   onMounted(() => {
     if (!channel) {
       console.error(
@@ -69,7 +75,10 @@ export const broadcasted = <
     closed = true;
   });
 
-  return customRef((track, trigger) => {
+  /**
+   * Use Vue's CustomRef to ensure flawless reactivity
+   */
+  const ref = customRef((track, trigger) => {
     /**
      * Vue's callback for change detection
      */
@@ -100,4 +109,8 @@ export const broadcasted = <
       },
     };
   });
+
+  return {
+    channel, ref
+  }
 };
