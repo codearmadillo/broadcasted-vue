@@ -11,8 +11,15 @@ type Event = | {
   data: number
 };
 
-type Options = {
-  error?: (...args: any[]) => void;
+type Options<TEvent> = {
+  /**
+   * Called when error occurs while receiving an event
+   */
+  errorCallback?: (eventName: TEvent, e: MessageEvent) => void;
+  /**
+   * Timeout in ms to check whether the channel is healthy. Defaults to 5 seconds. If set to 0, the check is not performed
+   */
+  timeoutInMs?: number;
 };
 
 export const broadcasted = <
@@ -21,7 +28,7 @@ export const broadcasted = <
 >(
   event: TEvent,
   value: TValue,
-  options?: Options | {}
+  options: Options<TEvent>
 ) => {
   /**
    * If user's browser doesn't support BroadcastChannel, return standard Vue ref
@@ -32,9 +39,29 @@ export const broadcasted = <
     return ref(value);
   }
 
+  let channel = new BroadcastChannel(event);
+  let channelHealthCheckTimeoutInMs = options?.timeoutInMs ?? 1000;
+  let shouldCheckChannelHealthyState = channelHealthCheckTimeoutInMs > 0;
+  let channelHealthCheckInterval: any = null;
+  const channelHealthCheckEventName = 'channelHealthCheck';
+
+  /**
+   * Vue reactivity callback necessary for correctly updating customRef when events arrive in channel
+   */
   let triggerReactiveValueChangeCallback: () => void;
-  const closed = ref(false);
-  const channel = new BroadcastChannel(event);
+
+  function runChannelHealthCheck() {
+    /**
+     * Attempt to send a ping in the channel
+     * If the channel is dead, try to re-establish it
+     */
+    try {
+      channel.postMessage({ event: channelHealthCheckEventName });
+    } catch(e) {
+      console.error(`Error pinging channel with event '${event} - Attempting to re-establish channel'`);
+      channel = new BroadcastChannel(event);
+    }
+  }
 
   function onBroadcastChannelMessage(e: MessageEvent) {
     if (!triggerReactiveValueChangeCallback) {
@@ -50,6 +77,9 @@ export const broadcasted = <
     console.error(
       `Error receiving event ${event} - ${e?.data}. This usually means that the event was not sent correctly and message cannot be serialised`
     );
+    if (options?.errorCallback) {
+      options.errorCallback(event, e);
+    }
   }
 
   /**
@@ -63,8 +93,22 @@ export const broadcasted = <
     }
     channel.addEventListener('message', onBroadcastChannelMessage);
     channel.addEventListener('messageerror', onBroadcastChannelError);
+    /**
+     * Establish channel health-check interval if desired
+     */
+    if (shouldCheckChannelHealthyState) {
+      channelHealthCheckInterval = setInterval(() => {
+        runChannelHealthCheck();
+      }, channelHealthCheckTimeoutInMs);
+    }
   });
   onUnmounted(() => {
+    /**
+     * Get rid of health-check interval first
+     */
+    if (channelHealthCheckInterval) {
+      clearInterval(channelHealthCheckInterval);
+    }
     /**
      * Closing a channel generally disposes of event listeners
      * It is still a good practice to clean them up to prevent leaks
@@ -72,7 +116,6 @@ export const broadcasted = <
     channel.removeEventListener('message', onBroadcastChannelMessage);
     channel.removeEventListener('messageerror', onBroadcastChannelError);
     channel.close();
-    closed.value = true;
   });
 
   /**
@@ -97,14 +140,9 @@ export const broadcasted = <
         }
 
         /**
-         * Safe-guard against closed channels (unlikely..)
+         * Before sending data - perform channel health check
          */
-        if (closed.value) {
-          console.error(
-            `Something went wrong - Attempted to propagate event '${event}' but the channel was closed`
-          );
-          return;
-        }
+        runChannelHealthCheck();
 
         channel.postMessage(newValue);
       },
@@ -112,6 +150,6 @@ export const broadcasted = <
   });
 
   return {
-    channel, closed, ref: valueReference
+    channel, ref: valueReference
   }
 };
