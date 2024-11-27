@@ -39,11 +39,21 @@ export const broadcasted = <
     return ref(value);
   }
 
-  let channel = new BroadcastChannel(event);
+  /**
+   * Internal event model
+   */
+  type ChannelEvent = {
+    name: TEvent,
+    data: TValue,
+  }
+
+  const CHANNEL_NAME = 'ap';
+  const CHANNEL_HEALTH_CHECK_EVENT_NAME = 'channelHealthCheck';
+
+  let channel = ref(new BroadcastChannel(CHANNEL_NAME));
   let channelHealthCheckTimeoutInMs = options?.timeoutInMs ?? 1000;
   let shouldCheckChannelHealthyState = channelHealthCheckTimeoutInMs > 0;
   let channelHealthCheckInterval: any = null;
-  const channelHealthCheckEventName = 'channelHealthCheck';
 
   /**
    * Vue reactivity callback necessary for correctly updating customRef when events arrive in channel
@@ -56,21 +66,26 @@ export const broadcasted = <
      * If the channel is dead, try to re-establish it
      */
     try {
-      channel.postMessage({ event: channelHealthCheckEventName });
+      channel.value.postMessage({ event: CHANNEL_HEALTH_CHECK_EVENT_NAME });
     } catch(e) {
       console.error(`Error pinging channel with event '${event} - Attempting to re-establish channel'`);
-      channel = new BroadcastChannel(event);
+      channel.value = new BroadcastChannel(CHANNEL_NAME);
     }
   }
 
-  function onBroadcastChannelMessage(e: MessageEvent) {
+  function onBroadcastChannelMessage(e: MessageEvent<ChannelEvent>) {
     if (!triggerReactiveValueChangeCallback) {
       console.error(
         `Error triggering Vue reactivity hook when setting value for event ${event} - Trigger callback is not defined.`
       );
       return;
     }
-    value = e.data as TValue;
+
+    if (e.data.name !== event) {
+      return;
+    }
+
+    value = e.data.data;
     triggerReactiveValueChangeCallback();
   }
   function onBroadcastChannelError(e: MessageEvent) {
@@ -82,17 +97,34 @@ export const broadcasted = <
     }
   }
 
+  function postToChannel(value: TValue) {
+    const message: ChannelEvent = {
+      name: event,
+      data: value
+    }
+
+    /**
+     * Before sending data - perform channel health check
+     */
+    runChannelHealthCheck();
+
+    /**
+     * Send entire event to channel
+     */
+    channel.value.postMessage(message);
+  }
+
   /**
    * Component lifecycle callbacks
    */
   onMounted(() => {
-    if (!channel) {
+    if (!channel.value) {
       console.error(
         'Something went wrong when initializing BroadcastChannel - event listeners will not work as expected'
       );
     }
-    channel.addEventListener('message', onBroadcastChannelMessage);
-    channel.addEventListener('messageerror', onBroadcastChannelError);
+    channel.value.addEventListener('message', onBroadcastChannelMessage);
+    channel.value.addEventListener('messageerror', onBroadcastChannelError);
     /**
      * Establish channel health-check interval if desired
      */
@@ -113,9 +145,9 @@ export const broadcasted = <
      * Closing a channel generally disposes of event listeners
      * It is still a good practice to clean them up to prevent leaks
      */
-    channel.removeEventListener('message', onBroadcastChannelMessage);
-    channel.removeEventListener('messageerror', onBroadcastChannelError);
-    channel.close();
+    channel.value.removeEventListener('message', onBroadcastChannelMessage);
+    channel.value.removeEventListener('messageerror', onBroadcastChannelError);
+    channel.value.close();
   });
 
   /**
@@ -134,17 +166,7 @@ export const broadcasted = <
       set(newValue: TValue) {
         value = newValue;
         trigger();
-
-        if (!channel) {
-          return;
-        }
-
-        /**
-         * Before sending data - perform channel health check
-         */
-        runChannelHealthCheck();
-
-        channel.postMessage(newValue);
+        postToChannel(newValue);
       },
     };
   });

@@ -4,9 +4,7 @@ import { broadcasted } from '../composables/broadcasted';
 
 const { ref: count, channel } = broadcasted('HelloWorld', 0);
 const { ref: count1, channel: channel1 } = broadcasted('HelloWorld1', 0, {
-  errorCallback: (e: 'HelloWorld1', em: MessageEvent) => {
-    // Error callback called when there is an error receiving data
-  }
+  timeoutInMs: 0
 });
 const { ref: count2, channel: channel2 } = broadcasted('HelloWorld2', 0);
 </script>
@@ -20,7 +18,7 @@ const { ref: count2, channel: channel2 } = broadcasted('HelloWorld2', 0);
   <div class="radio">
     <div class="value">{{ count1 }}</div>
     <button class="button" @click="count1 += 2">+2</button>
-    <button class="button close-channel" @click="channel1.close()">Close</button>
+    <button class="button close-channel" @click="channel1.close()">Close (Disabled auto-renew)</button>
   </div>
   <div class="radio">
     <div class="value">{{ count2 }}</div>
