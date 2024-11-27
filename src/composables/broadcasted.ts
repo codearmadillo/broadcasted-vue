@@ -33,7 +33,7 @@ export const broadcasted = <
   }
 
   let triggerReactiveValueChangeCallback: () => void;
-  let closed = false;
+  const closed = ref(false);
   const channel = new BroadcastChannel(event);
 
   function onBroadcastChannelMessage(e: MessageEvent) {
@@ -72,13 +72,13 @@ export const broadcasted = <
     channel.removeEventListener('message', onBroadcastChannelMessage);
     channel.removeEventListener('messageerror', onBroadcastChannelError);
     channel.close();
-    closed = true;
+    closed.value = true;
   });
 
   /**
    * Use Vue's CustomRef to ensure flawless reactivity
    */
-  const ref = customRef((track, trigger) => {
+  const valueReference = customRef((track, trigger) => {
     /**
      * Vue's callback for change detection
      */
@@ -99,10 +99,11 @@ export const broadcasted = <
         /**
          * Safe-guard against closed channels (unlikely..)
          */
-        if (closed) {
+        if (closed.value) {
           console.error(
             `Something went wrong - Attempted to propagate event '${event}' but the channel was closed`
           );
+          return;
         }
 
         channel.postMessage(newValue);
@@ -111,6 +112,6 @@ export const broadcasted = <
   });
 
   return {
-    channel, ref
+    channel, closed, ref: valueReference
   }
 };
